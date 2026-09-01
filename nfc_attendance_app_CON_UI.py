@@ -27,7 +27,6 @@ import requests
 
 try:
     from PIL import Image, ImageTk
-
     PIL_AVAILABLE = True
 except ImportError:
     # Lets the app still run with the drawn placeholder if Pillow isn't
@@ -37,7 +36,6 @@ except ImportError:
 try:
     from smartcard.System import readers
     from smartcard.util import toHexString
-
     SMARTCARD_AVAILABLE = True
 except ImportError:
     # Lets the window still open with a clear error message instead of
@@ -45,7 +43,7 @@ except ImportError:
     SMARTCARD_AVAILABLE = False
 
 # ---------- CONFIG ----------
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyIx_SOMXA-lnPWjlcGTk52EmO0jCCyDZtFFlTTVbATZnAwiony4xM675JAM91qeWTeGg/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrVB07djfvgL-RPOvy1oJ1w6Fsm6i0AbRdWk6ctPsjWva9TzqOrpAXXkSa3RUkXtNX9A/exec"
 GET_UID = [0xFF, 0xCA, 0x00, 0x00, 0x00]
 POLL_INTERVAL_SECONDS = 0.5
 DUPLICATE_TAP_COOLDOWN_SECONDS = 5
@@ -95,7 +93,8 @@ def send_uid(uid):
         result = resp.json()
         # result is expected to be shaped like:
         # {"uid": ..., "name": ..., "membershipId": ...,
-        #  "matriculaActiva": "Yes"/"No", "mensualidadActiva": "Yes"/"No"}
+        #  "matriculaActiva": "Yes"/"No", "mensualidadActiva": "Yes"/"No",
+        #  "proximoPago": "X dias"}
         event_queue.put(("tap", uid, result))
     except Exception as post_err:
         event_queue.put(("log", f"Failed to send check-in for UID {uid}: {post_err}"))
@@ -113,13 +112,13 @@ def polling_loop(stop_event):
 
     available_readers = readers()
     if not available_readers:
-        event_queue.put(("status", "No NFC reader found"))
-        event_queue.put(("log", "Plug in a reader and restart the app."))
+        event_queue.put(("status", "No se encontro el lector NFC"))
+        event_queue.put(("log", "Conecte el lector y reinicie el app..."))
         return
 
     reader = available_readers[0]
     event_queue.put(("status", f"Ready - using {reader}"))
-    event_queue.put(("log", f"Using reader: {reader}"))
+    event_queue.put(("log", f"Registro de entrada de los clientes:"))
 
     last_uid = None
     last_uid_time = 0
@@ -135,7 +134,7 @@ def polling_loop(stop_event):
                 now = time.time()
 
                 if uid != last_uid or (now - last_uid_time) > DUPLICATE_TAP_COOLDOWN_SECONDS:
-                    event_queue.put(("status", "Card detected - sending..."))
+                    event_queue.put(("status", "Tarjeta NFC detectada - enviando informacion para ser verificada..."))
                     send_uid(uid)
                     last_uid = uid
                     last_uid_time = now
@@ -144,7 +143,7 @@ def polling_loop(stop_event):
         except Exception:
             last_uid = None
             if event_queue.empty():
-                event_queue.put(("status", "Waiting for card..."))
+                event_queue.put(("status", "Esperando en leer las tarjetas NFC de los clientes..."))
             time.sleep(POLL_INTERVAL_SECONDS)
 
 
@@ -214,13 +213,13 @@ class NfcAttendanceApp:
         self.id_var = tk.StringVar(value="\u2014")
         self.matricula_var = tk.StringVar(value="\u2014")
         self.mensualidad_var = tk.StringVar(value="\u2014")
+        self.proximo_pago_var = tk.StringVar(value="\u2014")
 
-        self._add_info_row(info_frame, 0, "Name:", self.name_var, label_font, name_value_font)
+        self._add_info_row(info_frame, 0, "Nombre:", self.name_var, label_font, name_value_font, wraplength=340)
         self._add_info_row(info_frame, 1, "ID:", self.id_var, label_font, value_font)
-        self.matricula_label = self._add_info_row(info_frame, 2, "Matricula Activa:", self.matricula_var, label_font,
-                                                  value_font)
-        self.mensualidad_label = self._add_info_row(info_frame, 3, "Mensualidad Activa:", self.mensualidad_var,
-                                                    label_font, value_font)
+        self.matricula_label = self._add_info_row(info_frame, 2, "Matricula Activa:", self.matricula_var, label_font, value_font)
+        self.mensualidad_label = self._add_info_row(info_frame, 3, "Mensualidad Activa:", self.mensualidad_var, label_font, value_font)
+        self._add_info_row(info_frame, 4, "Proximo pago:", self.proximo_pago_var, label_font, value_font)
 
         # --- Background thread setup ---
         self.stop_event = threading.Event()
@@ -232,17 +231,22 @@ class NfcAttendanceApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(150, self.drain_queue)
 
-    def _add_info_row(self, parent, row, label_text, value_var, label_font, value_font):
+    def _add_info_row(self, parent, row, label_text, value_var, label_font, value_font, wraplength=None):
         """Builds one 'Label: value' row used in the info panel under the
         avatar. Returns the value Label widget so its color can be
-        updated dynamically (e.g. green/red for Yes/No status)."""
+        updated dynamically (e.g. green/red for Yes/No status).
+
+        wraplength (pixels): if set, long values wrap onto additional
+        lines instead of overflowing past the window edge - used for the
+        Name row, where names can vary a lot in length."""
         tk.Label(
             parent, text=label_text, font=label_font,
             fg="#a6adc8", bg="#1e1e2e", anchor="w"
-        ).grid(row=row, column=0, sticky="w", pady=6)
+        ).grid(row=row, column=0, sticky="nw", pady=6)
         value_label = tk.Label(
             parent, textvariable=value_var, font=value_font,
-            fg="#89dceb", bg="#1e1e2e", anchor="w"
+            fg="#89dceb", bg="#1e1e2e", anchor="w", justify="left",
+            wraplength=wraplength
         )
         value_label.grid(row=row, column=1, sticky="w", padx=(12, 0), pady=6)
         return value_label
@@ -262,7 +266,7 @@ class NfcAttendanceApp:
 
         photo_path = find_photo_for_uid(uid)
         if photo_path is None:
-            self.append_log(f"No photo found for UID {uid} in '{PHOTOS_DIR}/' - showing placeholder")
+            self.append_log(f"No se encontró una photo para el UID {uid} in '{PHOTOS_DIR}/' - showing placeholder")
             self.draw_placeholder_silhouette()
             return
 
@@ -318,18 +322,20 @@ class NfcAttendanceApp:
                     membership_id = result.get("membershipId", "\u2014")
                     matricula = result.get("matriculaActiva", "\u2014")
                     mensualidad = result.get("mensualidadActiva", "\u2014")
+                    proximo_pago = result.get("proximoPago", "\u2014")
 
                     self.name_var.set(name)
                     self.id_var.set(membership_id)
                     self.matricula_var.set(matricula)
                     self.mensualidad_var.set(mensualidad)
+                    self.proximo_pago_var.set(proximo_pago)
 
                     # Color-code active/inactive status: green for Yes/Si, red otherwise
                     self.matricula_label.configure(fg=self._status_color(matricula))
                     self.mensualidad_label.configure(fg=self._status_color(mensualidad))
 
-                    self.status_var.set("Waiting for card...")
-                    self.append_log(f"Card UID: {uid} | Name: {name}")
+                    self.status_var.set("Esperando en leer las tarjetas NFC de los clientes...")
+                    self.append_log(f"UID: {uid} | Nombre: {name}")
                     self.show_avatar_for_uid(uid)
         except queue.Empty:
             pass
