@@ -43,14 +43,14 @@ except ImportError:
     SMARTCARD_AVAILABLE = False
 
 # ---------- CONFIG ----------
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzrVB07djfvgL-RPOvy1oJ1w6Fsm6i0AbRdWk6ctPsjWva9TzqOrpAXXkSa3RUkXtNX9A/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzu3iBfs_DJWEJl4krxwGys5ip8OP18zkB8wQfw4JjiQ7BQ8OG95hF2akM25y64FIgovA/exec"
 GET_UID = [0xFF, 0xCA, 0x00, 0x00, 0x00]
 POLL_INTERVAL_SECONDS = 0.5
 DUPLICATE_TAP_COOLDOWN_SECONDS = 5
 
 # 👉 CHANGE THIS if you want a different folder name. Photos should be
 # named after the card's UID, e.g. photos/047EA223C22A81.jpg
-PHOTOS_DIR = "gymSYV"
+PHOTOS_DIR = "Camera Roll"
 PHOTO_EXTENSIONS = [".jpg", ".jpeg", ".png", ".bmp", ".gif"]
 AVATAR_SIZE = (280, 280)  # matches the canvas size below
 FAILED_POSTS_LOG = "failed_posts.jsonl"
@@ -97,7 +97,7 @@ def send_uid(uid):
         #  "proximoPago": "X dias"}
         event_queue.put(("tap", uid, result))
     except Exception as post_err:
-        event_queue.put(("log", f"Failed to send check-in for UID {uid}: {post_err}"))
+        event_queue.put(("log", f"Error enviando el registro deL cliente con UID: {uid}. **ERROR 404 Client/Script**"))
         log_failed_post(payload, post_err)
 
 
@@ -266,7 +266,7 @@ class NfcAttendanceApp:
 
         photo_path = find_photo_for_uid(uid)
         if photo_path is None:
-            self.append_log(f"No se encontró una photo para el UID {uid} in '{PHOTOS_DIR}/' - showing placeholder")
+            self.append_log(f"No se encontro foto del cliente en '{PHOTOS_DIR}/' - [FAVOR TOMARLE LA FOTO]")
             self.draw_placeholder_silhouette()
             return
 
