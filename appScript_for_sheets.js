@@ -1,3 +1,33 @@
+function doGet(e) {
+  // Used by the Python app at startup to pull a full backup of the
+  // roster: GET <SCRIPT_URL>?action=backup
+  if (e && e.parameter && e.parameter.action === "backup") {
+    return exportRosterAsJson();
+  }
+  return ContentService.createTextOutput("OK");
+}
+
+/**
+ * Returns the entire "Registro de Clientes" sheet (header row included)
+ * as a JSON array of arrays, so it can be saved as a local CSV backup.
+ */
+function exportRosterAsJson() {
+  var ss = SpreadsheetApp.openById('1pz-G0MZtYh_iJyZmRYQyPYFAli_xZ7j6BD9htePOsds');
+  var rosterSheet = ss.getSheetByName("Registro de Clientes");
+  var data = rosterSheet.getDataRange().getValues();
+
+  // Dates come back as Date objects from getValues(); convert to plain
+  // strings so JSON.stringify doesn't mangle them.
+  var stringified = data.map(function(row) {
+    return row.map(function(cell) {
+      return cell instanceof Date ? cell.toString() : cell;
+    });
+  });
+
+  return ContentService.createTextOutput(JSON.stringify(stringified))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   // Guard against missing/malformed POST body
   if (!e || !e.postData || !e.postData.contents) {

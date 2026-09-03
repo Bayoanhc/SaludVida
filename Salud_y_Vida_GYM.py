@@ -14,6 +14,7 @@ The NFC polling loop runs on a background thread so the GUI never freezes
 while waiting on the reader or the network.
 """
 
+import csv
 import json
 import os
 import queue
@@ -55,6 +56,11 @@ PHOTO_EXTENSIONS = [".jpg", ".jpeg", ".png", ".bmp", ".gif"]
 AVATAR_SIZE = (280, 280)  # matches the canvas size below
 FAILED_POSTS_LOG = "failed_posts.jsonl"
 
+# 👉 Folder where a CSV backup of "Registro de Clientes" is saved every
+# time the app starts, so there's always a local copy even if the Google
+# Sheet becomes unreachable or gets accidentally edited/deleted.
+BACKUP_DIR = "backups info clientes"
+
 # Thread-safe queue: background thread pushes events, GUI thread drains them.
 event_queue = queue.Queue()
 
@@ -83,6 +89,27 @@ def log_failed_post(payload, error):
             f.write(json.dumps(entry) + "\n")
     except Exception as file_err:
         event_queue.put(("log", f"Could not write failed posts log: {file_err}"))
+
+
+def backup_roster_to_csv():
+    """Fetches the full 'Registro de Clientes' roster from the Apps
+    Script webhook (GET ?action=backup) and saves it as a timestamped
+    CSV file in BACKUP_DIR. Runs once at app startup on a background
+    thread so it never blocks the GUI from opening."""
+    try:
+        resp = requests.get(SCRIPT_URL, params={"action": "backup"}, timeout=15)
+        resp.raise_for_status()
+        rows = resp.json()  # list of lists: header row + one row per client
+
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        backup_path = os.path.join(BACKUP_DIR, "registro_de_clientes.csv")
+
+        with open(backup_path, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerows(rows)
+
+        event_queue.put(("log", f"Backup del registro de clientes actualizado: {backup_path}"))
+    except Exception as backup_err:
+        event_queue.put(("log", f"No se pudo hacer el backup del registro de clientes: {backup_err}"))
 
 
 def send_uid(uid):
@@ -222,6 +249,11 @@ class NfcAttendanceApp:
         self._add_info_row(info_frame, 4, "Proximo pago:", self.proximo_pago_var, label_font, value_font)
 
         # --- Background thread setup ---
+        # Backup runs once at startup, on its own thread, so a slow/failed
+        # network call never delays the GUI opening or blocks NFC polling.
+        self.backup_thread = threading.Thread(target=backup_roster_to_csv, daemon=True)
+        self.backup_thread.start()
+
         self.stop_event = threading.Event()
         self.worker_thread = threading.Thread(
             target=polling_loop, args=(self.stop_event,), daemon=True
