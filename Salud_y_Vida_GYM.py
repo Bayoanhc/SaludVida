@@ -108,8 +108,10 @@ def backup_roster_to_csv():
             csv.writer(f).writerows(rows)
 
         event_queue.put(("log", f"Backup del registro de clientes actualizado: {backup_path}"))
+        event_queue.put(("blank",))
     except Exception as backup_err:
         event_queue.put(("log", f"No se pudo hacer el backup del registro de clientes: {backup_err}"))
+        event_queue.put(("blank",))
 
 
 def send_uid(uid):
@@ -126,6 +128,18 @@ def send_uid(uid):
     except Exception as post_err:
         event_queue.put(("log", f"Error enviando el registro deL cliente con UID: {uid}. **ERROR 404 Client/Script**"))
         log_failed_post(payload, post_err)
+
+
+def startup_sequence(stop_event):
+    """Runs once when the app starts, on a single background thread:
+    first the roster backup, then NFC polling - in that order, on purpose.
+    Running them on separate threads risked a card tap being processed
+    while the backup was still mid-read/write; doing them sequentially on
+    one thread guarantees no tap is handled until the backup has finished
+    (whether it succeeded or failed)."""
+    event_queue.put(("status", "Haciendo backup del registro de clientes..."))
+    backup_roster_to_csv()
+    polling_loop(stop_event)
 
 
 def polling_loop(stop_event):
@@ -145,7 +159,7 @@ def polling_loop(stop_event):
 
     reader = available_readers[0]
     event_queue.put(("status", f"Ready - using {reader}"))
-    event_queue.put(("log", f"Registro de entrada de los clientes:"))
+    event_queue.put(("log_bold", f"Registro de entrada de los clientes:"))
 
     last_uid = None
     last_uid_time = 0
@@ -222,6 +236,10 @@ class NfcAttendanceApp:
         self.log_box.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.log_box.yview)
 
+        # Bold tag for header-style log lines (e.g. the startup message)
+        log_font_bold = tkfont.Font(family="Consolas", size=9, weight="bold")
+        self.log_box.tag_configure("bold", font=log_font_bold)
+
         # --- Right: avatar photo on top, labeled info fields below ---
         right_panel = tk.Frame(body, bg="#1e1e2e")
         right_panel.grid(row=0, column=1, sticky="nsew")
@@ -254,14 +272,11 @@ class NfcAttendanceApp:
         self._add_info_row(info_frame, 4, "Proximo pago:", self.proximo_pago_var, label_font, value_font)
 
         # --- Background thread setup ---
-        # Backup runs once at startup, on its own thread, so a slow/failed
-        # network call never delays the GUI opening or blocks NFC polling.
-        self.backup_thread = threading.Thread(target=backup_roster_to_csv, daemon=True)
-        self.backup_thread.start()
-
+        # Single thread: backup runs first, then NFC polling starts only
+        # once the backup has finished - see startup_sequence() for why.
         self.stop_event = threading.Event()
         self.worker_thread = threading.Thread(
-            target=polling_loop, args=(self.stop_event,), daemon=True
+            target=startup_sequence, args=(self.stop_event,), daemon=True
         )
         self.worker_thread.start()
 
@@ -353,10 +368,17 @@ class NfcAttendanceApp:
             return "#a6e3a1"  # green
         return "#f38ba8"  # red
 
-    def append_log(self, message):
+    def append_log(self, message, bold=False):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.configure(state="normal")
-        self.log_box.insert("end", f"[{timestamp}] {message}\n")
+        self.log_box.insert("end", f"[{timestamp}] ")
+        self.log_box.insert("end", f"{message}\n", "bold" if bold else "")
+        self.log_box.see("end")
+        self.log_box.configure(state="disabled")
+
+    def append_blank_line(self):
+        self.log_box.configure(state="normal")
+        self.log_box.insert("end", "\n")
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
 
@@ -373,6 +395,10 @@ class NfcAttendanceApp:
                     self.status_var.set(event[1])
                 elif kind == "log":
                     self.append_log(event[1])
+                elif kind == "log_bold":
+                    self.append_log(event[1], bold=True)
+                elif kind == "blank":
+                    self.append_blank_line()
                 elif kind == "tap":
                     uid, result = event[1], event[2]
                     name = result.get("name", "UNKNOWN")
@@ -394,6 +420,7 @@ class NfcAttendanceApp:
                     self.status_var.set("Esperando en leer las tarjetas NFC de los clientes...")
                     self.append_log(f"UID: {uid} | Nombre: {name}")
                     self.show_avatar_for_uid(uid)
+                    self.append_blank_line()
         except queue.Empty:
             pass
 
