@@ -70,6 +70,7 @@ function doPost(e) {
       result.name = rosterData[i][1];
       result.matriculaActiva = rosterData[i][4];
       result.mensualidadActiva = rosterData[i][6];
+      result.proximoPago = rosterData[i][7];
       break;
     }
   }
