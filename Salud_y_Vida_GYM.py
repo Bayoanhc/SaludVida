@@ -44,7 +44,7 @@ except ImportError:
     SMARTCARD_AVAILABLE = False
 
 # ---------- CONFIG ----------
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzu3iBfs_DJWEJl4krxwGys5ip8OP18zkB8wQfw4JjiQ7BQ8OG95hF2akM25y64FIgovA/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwy7zCJUsQPZOX4PU_PsZdwe9g-e8WvzULxX6jGL02XK_ftUWiiw5kT84pn6VCdlIQU/exec"
 GET_UID = [0xFF, 0xCA, 0x00, 0x00, 0x00]
 POLL_INTERVAL_SECONDS = 0.5
 DUPLICATE_TAP_COOLDOWN_SECONDS = 5
