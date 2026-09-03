@@ -178,9 +178,14 @@ class NfcAttendanceApp:
     def __init__(self, root):
         self.root = root
         self.root.title("NFC Attendance Reader")
-        self.root.geometry("1080x650")
-        self.root.minsize(1400, 600)
         self.root.configure(bg="#1e1e2e")
+
+        # Center the window on whatever screen it opens on, and clamp its
+        # size so it never exceeds the actual screen dimensions - fixes
+        # the window opening partially off-screen on a different monitor
+        # or a lower-resolution display than the one it was built on.
+        self._center_window(root, desired_width=1080, desired_height=650)
+        self.root.minsize(1300, 500)
 
         status_font = tkfont.Font(size=13)
         label_font = tkfont.Font(size=15)
@@ -262,6 +267,26 @@ class NfcAttendanceApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(150, self.drain_queue)
+
+    @staticmethod
+    def _center_window(root, desired_width, desired_height):
+        """Sizes the window to desired_width x desired_height (or smaller,
+        if the screen itself is smaller), then positions it centered on
+        the screen instead of leaving placement to the OS default, which
+        can land partially off-screen on a different monitor/resolution."""
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+
+        # Leave a small margin so the window doesn't butt right up against
+        # screen edges/taskbars on smaller displays.
+        margin = 40
+        width = min(desired_width, screen_width - margin)
+        height = min(desired_height, screen_height - margin)
+
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+
+        root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _add_info_row(self, parent, row, label_text, value_var, label_font, value_font, wraplength=None):
         """Builds one 'Label: value' row used in the info panel under the
