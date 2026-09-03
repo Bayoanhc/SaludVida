@@ -160,6 +160,7 @@ def polling_loop(stop_event):
     reader = available_readers[0]
     event_queue.put(("status", f"Ready - using {reader}"))
     event_queue.put(("log_bold", f"Registro de entrada de los clientes:"))
+    event_queue.put(("blank",))
 
     last_uid = None
     last_uid_time = 0
