@@ -200,7 +200,12 @@ class NfcAttendanceApp:
         # the window opening partially off-screen on a different monitor
         # or a lower-resolution display than the one it was built on.
         self._center_window(root, desired_width=1080, desired_height=650)
-        self.root.minsize(1400, 500)
+        # minsize gives width and height the same proportional "give" when
+        # resizing: width can shrink to ~83% of its default (1080->900),
+        # so height's floor is set to match that same ratio (650->550)
+        # instead of the previous 600, which barely allowed any shrink.
+        self.root.resizable(True, True)
+        self.root.minsize(1450, 650)
 
         status_font = tkfont.Font(size=13)
         label_font = tkfont.Font(size=15)
