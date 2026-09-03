@@ -200,7 +200,7 @@ class NfcAttendanceApp:
         # the window opening partially off-screen on a different monitor
         # or a lower-resolution display than the one it was built on.
         self._center_window(root, desired_width=1080, desired_height=650)
-        self.root.minsize(1300, 500)
+        self.root.minsize(1400, 500)
 
         status_font = tkfont.Font(size=13)
         label_font = tkfont.Font(size=15)
@@ -241,6 +241,14 @@ class NfcAttendanceApp:
         log_font_bold = tkfont.Font(family="Consolas", size=9, weight="bold")
         self.log_box.tag_configure("bold", font=log_font_bold)
 
+        # Hanging indent so a wrapped log line's continuation aligns under
+        # the message text (after "[HH:MM:SS] ") instead of the left edge.
+        # lmargin1 = first line's left margin (0, i.e. normal).
+        # lmargin2 = margin for wrapped continuation lines of the same
+        # paragraph, set to the pixel width of the timestamp prefix.
+        prefix_width = log_font.measure("[00:00:00] ")
+        self.log_box.tag_configure("indent", lmargin1=0, lmargin2=prefix_width)
+
         # --- Right: avatar photo on top, labeled info fields below ---
         right_panel = tk.Frame(body, bg="#1e1e2e")
         right_panel.grid(row=0, column=1, sticky="nsew")
@@ -266,11 +274,17 @@ class NfcAttendanceApp:
         self.mensualidad_var = tk.StringVar(value="\u2014")
         self.proximo_pago_var = tk.StringVar(value="\u2014")
 
-        self._add_info_row(info_frame, 0, "Nombre:", self.name_var, label_font, name_value_font, wraplength=340)
+        self.name_label = self._add_info_row(info_frame, 0, "Nombre:", self.name_var, label_font, name_value_font, wraplength=340)
         self._add_info_row(info_frame, 1, "ID:", self.id_var, label_font, value_font)
         self.matricula_label = self._add_info_row(info_frame, 2, "Matricula Activa:", self.matricula_var, label_font, value_font)
         self.mensualidad_label = self._add_info_row(info_frame, 3, "Mensualidad Activa:", self.mensualidad_var, label_font, value_font)
         self._add_info_row(info_frame, 4, "Proximo pago:", self.proximo_pago_var, label_font, value_font)
+
+        # Recalculate the name field's wraplength whenever the panel is
+        # resized, instead of relying on one fixed pixel value - fixes
+        # long names overflowing past the window edge on smaller screens
+        # where the panel ends up narrower than the hardcoded guess.
+        right_panel.bind("<Configure>", self._on_right_panel_resize)
 
         # --- Background thread setup ---
         # Single thread: backup runs first, then NFC polling starts only
@@ -303,6 +317,13 @@ class NfcAttendanceApp:
         y = max(0, (screen_height - height) // 2)
 
         root.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _on_right_panel_resize(self, event):
+        """Keeps the Name field's wrap width in sync with the actual
+        available panel width, so long names wrap correctly instead of
+        overflowing past the window edge on narrower screens/windows."""
+        new_wraplength = max(150, event.width - 40)
+        self.name_label.configure(wraplength=new_wraplength)
 
     def _add_info_row(self, parent, row, label_text, value_var, label_font, value_font, wraplength=None):
         """Builds one 'Label: value' row used in the info panel under the
@@ -372,8 +393,11 @@ class NfcAttendanceApp:
     def append_log(self, message, bold=False):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.configure(state="normal")
+        line_start = self.log_box.index("end-1c")
         self.log_box.insert("end", f"[{timestamp}] ")
         self.log_box.insert("end", f"{message}\n", "bold" if bold else "")
+        line_end = self.log_box.index("end-1c")
+        self.log_box.tag_add("indent", line_start, line_end)
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
 
